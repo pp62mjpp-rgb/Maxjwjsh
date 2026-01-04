@@ -1,17 +1,19 @@
 const cookie = require('cookie');
 
 exports.handler = async (event, context) => {
-    // 1. TERA NAYA PASSWORD
+    // 1. AAPKA PASSWORD
     const MY_SECRET_PASSWORD = "36hgfc66gg66"; 
     const DEFAULT_RESPONSE_URL = "https://earnlinks.in/MGENo";
     
     const path = event.path;
-    const queryParams = event.queryStringParameters;
+    // URL se data nikalne ke liye
+    const queryParams = event.queryStringParameters || {};
+    // Cookies check karne ke liye
     const cookies = cookie.parse(event.headers.cookie || '');
 
-    // --- API LOGIC (/api) ---
+    // --- API SECTION (/api) ---
     if (path.includes('/api')) {
-        // Password Check
+        // Password Check (Security)
         if (queryParams.api !== MY_SECRET_PASSWORD) {
             return {
                 statusCode: 401,
@@ -20,22 +22,18 @@ exports.handler = async (event, context) => {
             };
         }
 
-        let baseTarget = queryParams.url || "";
-        let alias = queryParams.alias || "";
+        const baseTarget = queryParams.url || "";
+        const alias = queryParams.alias || "";
         
-        // --- SMART LINK BUILDING LOGIC ---
+        // --- REAL LOGIC: URL + ALIAS ---
         let finalRedirectUrl = baseTarget;
-        
         if (alias && alias.trim() !== "") {
-            // Agar alias hai, toh use URL ke peeche jod do (e.g., site.com/max)
-            // Pehle check karo ki URL ke peeche / hai ya nahi
-            if (baseTarget.endsWith('/')) {
-                finalRedirectUrl = baseTarget + alias;
-            } else {
-                finalRedirectUrl = baseTarget + "/" + alias;
-            }
+            // Agar URL ke aakhri mein '/' nahi hai toh laga do, phir alias jodo
+            const separator = baseTarget.endsWith('/') ? '' : '/';
+            finalRedirectUrl = `${baseTarget}${separator}${alias}`;
         }
 
+        // Cookie set karna (24 hours ke liye link yaad rakhega)
         const setCookie = cookie.serialize('user_dest', finalRedirectUrl, {
             httpOnly: true,
             secure: true,
@@ -44,30 +42,36 @@ exports.handler = async (event, context) => {
             path: '/'
         });
 
+        // Response waisa hi jaisa ek standard API deti hai
         return {
             statusCode: 200,
             headers: { 
                 'Set-Cookie': setCookie,
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*' 
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type'
             },
             body: JSON.stringify({
                 "status": "success",
-                "message": "",
+                "message": "Link updated successfully",
                 "shortenedUrl": DEFAULT_RESPONSE_URL
             })
         };
     }
 
-    // --- REDIRECT LOGIC (/go) ---
+    // --- REDIRECT SECTION (/go) ---
     if (path.includes('/go')) {
         const target = cookies.user_dest || DEFAULT_RESPONSE_URL;
+        
         return {
             statusCode: 302,
-            headers: { 'Location': target },
+            headers: { 
+                'Location': target,
+                'Cache-Control': 'no-cache'
+            },
             body: null
         };
     }
 
-    return { statusCode: 404, body: "Not Found" };
+    return { statusCode: 404, body: "API Endpoint Not Found" };
 };
